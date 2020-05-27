@@ -168,19 +168,14 @@ impl ChunkParams {
     fn generate_terrain(&self, center: na::Vector3<f64>) -> Material {
         let cube_coords = center * 0.5;
 
-        let rain = trilerp(&self.env.rainfalls, cube_coords);
-        let temp = trilerp(&self.env.temperatures, cube_coords);
+        let rain = triserp(&self.env.rainfalls, cube_coords, 0.2);
+        let temp = triserp(&self.env.temperatures, cube_coords, 0.2);
 
-        // block is a real number, threshold is in (0, 0.2) and biased towards 0
+        let block = triserp(&self.env.blockinesses, cube_coords, 0.2);
+        // block is a real number, threshold is in (0, 0.25) and biased towards 0
         // This causes the level of terrain bumpiness to vary over space.
-        let block = trilerp(&self.env.blockinesses, cube_coords);
-        let threshold = 2.0f64.powf(block) / (4.0 + 2.0f64.powf(block)) * 0.2;
-        let elev_raw = trilerp(&self.env.max_elevations, cube_coords);
-        let terracing_scale = 5.0; // This is not wavelength in number of blocks
-        let elev_floor = (elev_raw / terracing_scale).floor();
-        let elev_rem = elev_raw / terracing_scale - elev_floor;
-        let max_e = terracing_scale * elev_floor + serp(0.0, terracing_scale, elev_rem, threshold);
-
+        let threshold = 2.0f64.powf(block) / (8.0 + 2.0f64.powf(block)) * 0.25;
+        let elev = triserp(&self.env.max_elevations, cube_coords, threshold);
         let mut voxel_mat;
 
         // Nine basic terrain types based on combinations of
@@ -241,7 +236,7 @@ impl ChunkParams {
         }
 
         let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
-        if voxel_elevation >= max_e / ELEVATION_SCALE {
+        if voxel_elevation >= elev / ELEVATION_SCALE {
             voxel_mat = Material::Void;
         }
 
@@ -406,7 +401,7 @@ impl ChunkParams {
     }
 }
 
-const ELEVATION_SCALE: f64 = 10.0;
+const ELEVATION_SCALE: f64 = 12.0;
 
 struct NeighborData {
     coords_opposing: na::Vector3<u8>,
@@ -552,16 +547,46 @@ fn trilerp<N: na::RealField>(
 // v0 for [0, threshold], v1 for [1-threshold, 1], and linear interpolation in between
 // such that the overall shape is an S-shaped piecewise function.
 // threshold should be between 0 and 0.5.
-fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
-    if t < threshold {
-        v0
-    } else if t < (N::one() - threshold) {
-        let s = (t - threshold) / ((N::one() - threshold) - threshold);
-        v0 * (N::one() - s) + v1 * s
-    } else {
-        v1
+// If threshold is 0, triserp is identical to trilerp.
+fn triserp<N: na::RealField>(
+    &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
+    t: na::Vector3<N>,
+    threshold: N,
+) -> N {
+    fn serp<N: na::RealField>(v0: N, v1: N, t: N, threshold: N) -> N {
+        if t < threshold {
+            v0
+        } else if t < (N::one() - threshold) {
+            let s = (t - threshold) / ((N::one() - threshold) - threshold);
+            v0 * (N::one() - s) + v1 * s
+        } else {
+            v1
+        }
     }
+    fn biserp<N: na::RealField>(
+        v00: N,
+        v01: N,
+        v10: N,
+        v11: N,
+        t: na::Vector2<N>,
+        threshold: N,
+    ) -> N {
+        serp(
+            serp(v00, v01, t.x, threshold),
+            serp(v10, v11, t.x, threshold),
+            t.y,
+            threshold,
+        )
+    }
+
+    serp(
+        biserp(v000, v100, v010, v110, t.xy(), threshold),
+        biserp(v001, v101, v011, v111, t.xy(), threshold),
+        t.z,
+        threshold,
+    )
 }
+
 
 /// Location of the center of a voxel in a unit chunk
 fn voxel_center(dimension: u8, voxel: na::Vector3<u8>) -> na::Vector3<f64> {
