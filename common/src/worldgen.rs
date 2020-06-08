@@ -340,6 +340,82 @@ impl ChunkParams {
         criteria_met >= 2
     }
 
+    fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
+        [
+            self.neighbor(coords, -1, 0, 0, &voxels),
+            self.neighbor(coords, 1, 0, 0, &voxels),
+            self.neighbor(coords, 0, -1, 0, &voxels),
+            self.neighbor(coords, 0, 1, 0, &voxels),
+            self.neighbor(coords, 0, 0, -1, &voxels),
+            self.neighbor(coords, 0, 0, 1, &voxels),
+        ]
+    }
+
+    fn neighbor(
+        &self,
+        w: na::Vector3<u8>,
+        x: i8,
+        y: i8,
+        z: i8,
+        voxels: &VoxelData,
+    ) -> NeighborData {
+        let coords = na::Vector3::new(
+            (w.x as i8 + x) as u8,
+            (w.y as i8 + y) as u8,
+            (w.z as i8 + z) as u8,
+        );
+        let coords_opposing = na::Vector3::new(
+            (w.x as i8 - x) as u8,
+            (w.y as i8 - y) as u8,
+            (w.z as i8 - z) as u8,
+        );
+        let material = voxels.get(index(self.dimension, coords));
+
+        NeighborData {
+            coords_opposing,
+            material,
+        }
+    }
+
+    // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
+    // and a block of leaves. The leaf block is on the opposite face of the
+    // wood block as the ground block.
+    fn generate_trees(&self, voxels: &mut VoxelData) {
+        // margins are added to keep voxels outside the chunk from being read/written
+        let random_position = Uniform::new(1, self.dimension - 1);
+
+        let rain = self.env.rainfalls[0];
+        let tree_candidate_count =
+            ((self.dimension - 2).pow(3) as f64 * (rain / 100.0).max(0.0).min(0.5)) as usize;
+
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+
+        for _ in 0..tree_candidate_count {
+            let loc = na::Vector3::from_distribution(&random_position, &mut rng);
+            let voxel_of_interest_index = index(self.dimension, loc);
+            let neighbor_data = self.voxel_neighbors(loc, &voxels);
+
+            let num_void_neighbors = neighbor_data
+                .iter()
+                .filter(|n| n.material == Material::Void)
+                .count();
+
+            // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
+            if num_void_neighbors == 5 {
+                for i in neighbor_data.iter() {
+                    if (i.material == Material::Dirt)
+                        || (i.material == Material::Grass)
+                        || (i.material == Material::Flowergrass)
+                    {
+                        voxels.data_mut(self.dimension)[voxel_of_interest_index] = Material::Wood;
+                        let leaf_location = index(self.dimension, i.coords_opposing);
+                        voxels.data_mut(self.dimension)[leaf_location] = Material::Leaves;
+                    }
+                }
+            }
+        }
+    }
+
     /// Generate voxels making up the chunk
     pub fn generate_voxels(&self) -> VoxelData {
         // Determine whether this chunk might contain a boundary between solid and void
@@ -370,10 +446,6 @@ impl ChunkParams {
         }
 
         let mut voxels = VoxelData::Solid(Material::Void);
-        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
-
-        // margins are added to keep voxels outside the chunk from being read/written
-        let random_position = Uniform::new(1, self.dimension - 1);
 
         for z in 0..self.dimension {
             for y in 0..self.dimension {
@@ -399,38 +471,8 @@ impl ChunkParams {
 
         // TODO: Don't generate detailed data for solid chunks with no neighboring voids
 
-        // Planting trees on dirt, grass, or flowers. Trees consist of a block of wood
-        // and a block of leaves. The leaf block is on the opposite face of the
-        // wood block as the ground block.
         if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
-            let rain = self.env.rainfalls[0];
-            let tree_candidate_count =
-                ((self.dimension - 2).pow(3) as f64 * (rain / 100.0).max(0.0).min(0.5)) as usize;
-            for _ in 0..tree_candidate_count {
-                let loc = na::Vector3::from_distribution(&random_position, &mut rng);
-                let voxel_of_interest_index = index(self.dimension, loc);
-                let neighbor_data = voxel_neighbors(self.dimension, loc, &mut voxels);
-
-                let num_void_neighbors = neighbor_data
-                    .iter()
-                    .filter(|n| n.material == Material::Void)
-                    .count();
-
-                // Only plant a tree if there is exactly one adjacent block of dirt, grass, or flowers.
-                if num_void_neighbors == 5 {
-                    for i in neighbor_data.iter() {
-                        if (i.material == Material::Dirt)
-                            || (i.material == Material::Grass)
-                            || (i.material == Material::Flowergrass)
-                        {
-                            voxels.data_mut(self.dimension)[voxel_of_interest_index] =
-                                Material::Wood;
-                            let leaf_location = index(self.dimension, i.coords_opposing);
-                            voxels.data_mut(self.dimension)[leaf_location] = Material::Leaves;
-                        }
-                    }
-                }
-            }
+            self.generate_trees(&mut voxels);
         }
 
         voxels
@@ -442,43 +484,6 @@ const ELEVATION_SCALE: f64 = 10.0;
 struct NeighborData {
     coords_opposing: na::Vector3<u8>,
     material: Material,
-}
-
-fn voxel_neighbors(dim: u8, coords: na::Vector3<u8>, voxels: &mut VoxelData) -> [NeighborData; 6] {
-    [
-        neighbor(dim, coords, -1, 0, 0, voxels),
-        neighbor(dim, coords, 1, 0, 0, voxels),
-        neighbor(dim, coords, 0, -1, 0, voxels),
-        neighbor(dim, coords, 0, 1, 0, voxels),
-        neighbor(dim, coords, 0, 0, -1, voxels),
-        neighbor(dim, coords, 0, 0, 1, voxels),
-    ]
-}
-
-fn neighbor(
-    dimension: u8,
-    w: na::Vector3<u8>,
-    x: i8,
-    y: i8,
-    z: i8,
-    voxels: &mut VoxelData,
-) -> NeighborData {
-    let coords = na::Vector3::new(
-        (w.x as i8 + x) as u8,
-        (w.y as i8 + y) as u8,
-        (w.z as i8 + z) as u8,
-    );
-    let coords_opposing = na::Vector3::new(
-        (w.x as i8 - x) as u8,
-        (w.y as i8 - y) as u8,
-        (w.z as i8 - z) as u8,
-    );
-    let material = voxels.get(index(dimension, coords));
-
-    NeighborData {
-        coords_opposing,
-        material,
-    }
 }
 
 #[derive(Copy, Clone)]
