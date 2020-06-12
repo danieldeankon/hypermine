@@ -71,12 +71,12 @@ impl NodeState {
             road_state: NodeStateRoad::ROOT,
             spice: 0,
             enviro: EnviroFactors {
-                elevation: -2,
-                temperature: 0,
-                rainfall: 4,
-                slopeiness: 3,
-                blockiness: 0,
-                flatness: 25,
+                elevation: -2.0,
+                temperature: 0.0,
+                rainfall: 4.0,
+                slopeiness: 3.0,
+                blockiness: 0.0,
+                flatness: 0.0,
             },
         }
     }
@@ -128,6 +128,20 @@ impl NodeState {
     }
 }
 
+pub struct Temp {
+    location: na::Vector3<f64>,
+    material: Material
+}
+impl Temp {
+    pub fn new(mat: Material, elev: f64, rain: f64, temp: f64) -> Temp {
+        Temp {
+            location: na::Vector3::new(elev, rain, temp),
+            material: mat
+        }
+    }
+}
+
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -168,7 +182,16 @@ impl ChunkParams {
     }
 
     fn generate_terrain(&self, voxels: &mut VoxelData) {
-        //center: na::Vector3<f64>
+
+        const num_choices: usize = 6;
+        let voronoi_choices: [Temp; num_choices] = [
+            Temp::new(Material::Stone, 0.2, 0.0, 0.0),
+            Temp::new(Material::Blackstone, -2.0, 0.0, 0.4),
+            Temp::new(Material::Sand, 0.0, -0.5, 0.5),
+            Temp::new(Material::Redstone, 0.0, 0.2, 0.1),
+            Temp::new(Material::Graveldirt, 0.5, -0.2, -0.3),
+            Temp::new(Material::Grass, 0.6, 0.5, 0.5),
+        ];
 
         for z in 0..self.dimension {
             for y in 0..self.dimension {
@@ -194,90 +217,106 @@ impl ChunkParams {
                         + serp(0.0, terracing_scale, elev_rem, threshold);
 
                     let mut voxel_mat;
-                    let max_e;
+                    let max_e = elev;
 
                     // Nine basic terrain types based on combinations of
                     // low/medium/high temperature and humidity.
 
-                    if temp < -6.0 {
-                        if rain < -2.0 {
-                            voxel_mat = Material::Greystone;
-                        } else if rain < 6.0 {
-                            voxel_mat = Material::Snow;
-                        } else {
-                            voxel_mat = Material::Ice;
-                        }
-                    } else if temp < -2.0 {
-                        if rain < -0.5 {
-                            voxel_mat = Material::Greystone;
-                        } else if rain < 3.0 {
-                            voxel_mat = Material::Redstone;
-                        } else if rain < 5.0 {
-                            voxel_mat = Material::Snow;
-                        } else {
-                            voxel_mat = Material::Ice;
-                        }
-                    } else if temp < 2.0 {
-                        if rain < -2.0 {
-                            voxel_mat = Material::Stone;
-                        } else if rain < 0.0 {
-                            voxel_mat = Material::Gravelstone;
-                        } else if rain < 2.0 {
-                            voxel_mat = Material::Graveldirt;
-                        } else if rain < 3.0 {
-                            voxel_mat = Material::Dirt;
-                        } else if rain < 4.0 {
-                            voxel_mat = Material::Grass;
-                        } else {
-                            voxel_mat = Material::Flowergrass;
-                        }
-                    } else if temp < 6.0 {
-                        if rain < -2.0 {
-                            voxel_mat = Material::Blackstone;
-                        } else if rain < -0.5 {
-                            voxel_mat = Material::GreySand;
-                        } else if rain < 2.0 {
-                            voxel_mat = Material::Sand;
-                        } else if rain < 4.5 {
-                            voxel_mat = Material::Redsand;
-                        } else {
-                            voxel_mat = Material::Mud;
-                        }
-                    } else if temp - rain < 4.0 {
-                        voxel_mat = Material::Mud;
-                    } else if temp - rain < 8.0 {
-                        voxel_mat = Material::Sand
-                    } else if temp - rain < 10.0 {
-                        voxel_mat = Material::Blackstone;
-                    } else {
-                        voxel_mat = Material::Lava
+                    let y = na::Vector3::new(elev, rain, temp);
+                    let mut dist = na::norm(&(&voronoi_choices[0].location - &y));
+                    voxel_mat = voronoi_choices[0].material;
+                    for i in 1..num_choices {
+                        let d = na::norm(&(&voronoi_choices[i].location - &y));
+                        if d <= dist {
+                            dist = d;
+                            voxel_mat = voronoi_choices[i].material;
+                        };
                     }
+
+                    //.map(|x| na::distance_squared(&x.location, &y))
+                    //.min();
+
+
+
+                    // if temp < -6.0 {
+                    //     if rain < -2.0 {
+                    //         voxel_mat = Material::Greystone;
+                    //     } else if rain < 6.0 {
+                    //         voxel_mat = Material::Snow;
+                    //     } else {
+                    //         voxel_mat = Material::Ice;
+                    //     }
+                    // } else if temp < -2.0 {
+                    //     if rain < -0.5 {
+                    //         voxel_mat = Material::Greystone;
+                    //     } else if rain < 3.0 {
+                    //         voxel_mat = Material::Redstone;
+                    //     } else if rain < 5.0 {
+                    //         voxel_mat = Material::Snow;
+                    //     } else {
+                    //         voxel_mat = Material::Ice;
+                    //     }
+                    // } else if temp < 2.0 {
+                    //     if rain < -2.0 {
+                    //         voxel_mat = Material::Stone;
+                    //     } else if rain < 0.0 {
+                    //         voxel_mat = Material::Gravelstone;
+                    //     } else if rain < 2.0 {
+                    //         voxel_mat = Material::Graveldirt;
+                    //     } else if rain < 3.0 {
+                    //         voxel_mat = Material::Dirt;
+                    //     } else if rain < 4.0 {
+                    //         voxel_mat = Material::Grass;
+                    //     } else {
+                    //         voxel_mat = Material::Flowergrass;
+                    //     }
+                    // } else if temp < 6.0 {
+                    //     if rain < -2.0 {
+                    //         voxel_mat = Material::Blackstone;
+                    //     } else if rain < -0.5 {
+                    //         voxel_mat = Material::GreySand;
+                    //     } else if rain < 2.0 {
+                    //         voxel_mat = Material::Sand;
+                    //     } else if rain < 4.5 {
+                    //         voxel_mat = Material::Redsand;
+                    //     } else {
+                    //         voxel_mat = Material::Mud;
+                    //     }
+                    // } else if temp - rain < 4.0 {
+                    //     voxel_mat = Material::Mud;
+                    // } else if temp - rain < 8.0 {
+                    //     voxel_mat = Material::Sand
+                    // } else if temp - rain < 10.0 {
+                    //     voxel_mat = Material::Blackstone;
+                    // } else {
+                    //     voxel_mat = Material::Lava
+                    // }
 
                     // Additional adjustments alter both block material and elevation
                     // for a bit of extra variety.
-                    if flat <= 30.0 {
-                        let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-                        // peaks should roughly tend to be snow-covered
-                        if slope_mod <= 1_f64 {
-                            if temp < 0.0 {
-                                voxel_mat = Material::Snow;
-                                max_e = elev + 0.25;
-                            } else {
-                                max_e = elev;
-                            }
-                        } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                            voxel_mat = match voxel_mat {
-                                Material::Flowergrass => Material::Bigflowergrass,
-                                Material::Greystone => Material::Blackstone,
-                                _ => voxel_mat,
-                            };
-                            max_e = elev - 0.25;
-                        } else {
-                            max_e = elev;
-                        }
-                    } else {
-                        max_e = elev;
-                    }
+                    // if flat <= 30.0 {
+                    //     let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
+                    //     // peaks should roughly tend to be snow-covered
+                    //     if slope_mod <= 1_f64 {
+                    //         if temp < 0.0 {
+                    //             voxel_mat = Material::Snow;
+                    //             max_e = elev + 0.25;
+                    //         } else {
+                    //             max_e = elev;
+                    //         }
+                    //     } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
+                    //         voxel_mat = match voxel_mat {
+                    //             Material::Flowergrass => Material::Bigflowergrass,
+                    //             Material::Greystone => Material::Blackstone,
+                    //             _ => voxel_mat,
+                    //         };
+                    //         max_e = elev - 0.25;
+                    //     } else {
+                    //         max_e = elev;
+                    //     }
+                    // } else {
+                    //     max_e = elev;
+                    // }
 
                     let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
                     if voxel_elevation >= max_e / TERRAIN_SMOOTHNESS {
@@ -507,34 +546,37 @@ struct NeighborData {
 
 #[derive(Copy, Clone)]
 struct EnviroFactors {
-    elevation: i64,
-    temperature: i64,
-    rainfall: i64,
-    slopeiness: i64,
-    blockiness: i64,
-    flatness: i64,
+    elevation: f64,
+    temperature: f64,
+    rainfall: f64,
+    slopeiness: f64,
+    blockiness: f64,
+    flatness: f64,
 }
 impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
-        let plus_or_minus_one = Uniform::new_inclusive(-1, 1);
-        let flatness = (parent.flatness + rng.sample(&plus_or_minus_one))
-            .max(0)
-            .min(40);
-        let slopeiness = parent.slopeiness + rng.sample(&plus_or_minus_one);
+        let unif = Uniform::new_inclusive(-1.0, 1.0);
+        let flatness = (parent.flatness + rng.sample(&unif))
+            .max(-20.0)
+            .min(20.0);
+        let slopeiness = 0.9*parent.slopeiness + rng.sample(&unif);
+        let elevation = parent.elevation +
+            (
+                  (3.0 - parent.slopeiness.rem_euclid(7.0))
+                * (1.0 - (parent.flatness / 10.0).tanh())
+                + (3.0 - slopeiness.rem_euclid(7.0))
+                * (1.0 - (flatness / 10.0).tanh())
+            )
+            * rng.sample(&unif);
+
         Self {
             slopeiness,
             flatness,
-            elevation: parent.elevation
-                + ((((3 - parent.slopeiness.rem_euclid(7)) as f64)
-                    * (1.0 - (((parent.flatness as f64) - 20.0) / 10.0).tanh())
-                    + ((3 - slopeiness.rem_euclid(7)) as f64)
-                        * (1.0 - (((flatness as f64) - 20.0) / 10.0).tanh()))
-                    as i64)
-                    * rng.sample(&plus_or_minus_one),
-            temperature: parent.temperature + rng.sample(&plus_or_minus_one),
-            rainfall: parent.rainfall + rng.sample(&plus_or_minus_one),
-            blockiness: parent.blockiness + rng.sample(&plus_or_minus_one),
+            elevation,
+            temperature: 0.9*parent.temperature + rng.sample(&unif),
+            rainfall: 0.9*parent.rainfall + rng.sample(&unif),
+            blockiness: 0.9*parent.blockiness + rng.sample(&unif),
         }
     }
     fn continue_from(a: Self, b: Self, ab: Self) -> Self {
@@ -551,12 +593,12 @@ impl EnviroFactors {
 impl Into<(f64, f64, f64, f64, f64, f64)> for EnviroFactors {
     fn into(self) -> (f64, f64, f64, f64, f64, f64) {
         (
-            self.elevation as f64,
-            self.temperature as f64,
-            self.rainfall as f64,
-            self.slopeiness as f64,
-            self.blockiness as f64,
-            self.flatness as f64,
+            self.elevation,
+            self.temperature,
+            self.rainfall,
+            self.slopeiness,
+            self.blockiness,
+            self.flatness,
         )
     }
 }
@@ -731,7 +773,7 @@ mod test {
             *g.get_mut(new_node) = Some(Node {
                 state: {
                     let mut state = NodeState::root();
-                    state.enviro.elevation = i as i64 + 1;
+                    state.enviro.elevation = i as f64 + 1.0;
                     state
                 },
                 chunks: Chunks::default(),
