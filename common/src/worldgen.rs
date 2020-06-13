@@ -4,6 +4,7 @@ use crate::node::{DualGraph, VoxelData};
 use crate::{
     dodeca::{Side, Vertex},
     graph::NodeId,
+    terraingen::VoronoiInfo,
     world::Material,
     Plane,
 };
@@ -128,19 +129,6 @@ impl NodeState {
     }
 }
 
-pub struct Temp {
-    location: na::Vector2<f64>,
-    material: Material,
-}
-impl Temp {
-    pub fn new(mat: Material, /*elev: f64,*/ rain: f64, temp: f64) -> Temp {
-        Temp {
-            location: na::Vector2::new(rain, temp),
-            material: mat,
-        }
-    }
-}
-
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -181,131 +169,6 @@ impl ChunkParams {
     }
 
     fn generate_terrain(&self, voxels: &mut VoxelData) {
-        const NUM_CHOICES_HIGH: usize = 17;
-        let voronoi_choices_high: [Temp; NUM_CHOICES_HIGH] = [
-            Temp::new(Material::Grass, 6.1, 1.3),
-            Temp::new(Material::Ice, 5.5, -6.1),
-            Temp::new(Material::Grass, 5.1, 2.5),
-            Temp::new(Material::Stone, 4.9, -2.5),
-            Temp::new(Material::Dirt, 4.7, 0.3),
-            Temp::new(Material::Grass, 3.5, 4.1),
-            Temp::new(Material::Dirt, 3.3, -2.1),
-            Temp::new(Material::Ice, 2.3, -7.5),
-            Temp::new(Material::Dirt, 2.1, 1.7),
-            Temp::new(Material::Stone, 1.7, -4.7),
-            Temp::new(Material::Dirt, 0.5, 0.7),
-            Temp::new(Material::Dirt, -0.9, 3.1),
-            Temp::new(Material::Stone, -1.1, -5.3),
-            Temp::new(Material::Dirt, -1.1, -3.3),
-            Temp::new(Material::Dirt, -1.7, -0.7),
-            Temp::new(Material::Stone, -3.1, 2.5),
-            Temp::new(Material::Stone, -3.3, -2.1),
-        ];
-
-        const NUM_CHOICES_MED: usize = 62;
-        let voronoi_choices_med: [Temp; NUM_CHOICES_MED] = [
-            Temp::new(Material::Grass, 7.5, 1.3),
-            Temp::new(Material::Dirt, 6.9, -1.5),
-            Temp::new(Material::Bigflowergrass, 6.9, 4.3),
-            Temp::new(Material::Flowergrass, 6.9, 7.3),
-            Temp::new(Material::Dirt, 6.5, -2.9),
-            Temp::new(Material::Snow, 5.7, -4.5),
-            Temp::new(Material::Bigflowergrass, 5.7, 2.7),
-            Temp::new(Material::Dirt, 5.5, -2.7),
-            Temp::new(Material::Snow, 5.3, -6.9),
-            Temp::new(Material::Dirt, 4.9, -1.9),
-            Temp::new(Material::Flowergrass, 4.9, 4.3),
-            Temp::new(Material::Bigflowergrass, 4.7, 5.9),
-            Temp::new(Material::Snow, 4.1, -5.5),
-            Temp::new(Material::Grass, 4.1, -0.5),
-            Temp::new(Material::Snow, 3.9, -3.9),
-            Temp::new(Material::Grass, 3.1, 2.5),
-            Temp::new(Material::Flowergrass, 3.1, 7.5),
-            Temp::new(Material::Snow, 2.9, -7.7),
-            Temp::new(Material::Grass, 2.9, -2.1),
-            Temp::new(Material::Mud, 2.1, -3.5),
-            Temp::new(Material::Grass, 2.1, 0.7),
-            Temp::new(Material::Gravelstone, 1.9, -6.1),
-            Temp::new(Material::Flowergrass, 1.9, 5.1),
-            Temp::new(Material::Stone, 1.5, -7.3),
-            Temp::new(Material::Mud, 1.1, -4.7),
-            Temp::new(Material::Sand, 0.7, 7.3),
-            Temp::new(Material::Stone, 0.5, -6.1),
-            Temp::new(Material::Dirt, 0.5, -0.9),
-            Temp::new(Material::Dirt, 0.3, -2.3),
-            Temp::new(Material::Grass, 0.1, 2.1),
-            Temp::new(Material::Stone, -0.1, -7.9),
-            Temp::new(Material::Mud, -0.1, -3.5),
-            Temp::new(Material::Grass, -0.3, 3.9),
-            Temp::new(Material::Dirt, -0.5, -1.5),
-            Temp::new(Material::Graveldirt, -0.9, -5.7),
-            Temp::new(Material::Sand, -0.9, 6.3),
-            Temp::new(Material::Gravelstone, -1.1, -7.5),
-            Temp::new(Material::Dirt, -1.1, -2.5),
-            Temp::new(Material::Grass, -1.3, 1.7),
-            Temp::new(Material::Grass, -1.7, 0.1),
-            Temp::new(Material::Sand, -1.9, 4.5),
-            Temp::new(Material::Graveldirt, -2.1, -4.3),
-            Temp::new(Material::Dirt, -2.3, -1.5),
-            Temp::new(Material::Grass, -2.3, 3.1),
-            Temp::new(Material::Graveldirt, -2.5, -3.3),
-            Temp::new(Material::Grass, -3.3, 0.7),
-            Temp::new(Material::Greystone, -3.5, -7.9),
-            Temp::new(Material::Gravelstone, -3.5, -6.1),
-            Temp::new(Material::Sand, -3.9, 3.5),
-            Temp::new(Material::Graveldirt, -4.3, -3.7),
-            Temp::new(Material::Dirt, -4.3, -1.9),
-            Temp::new(Material::Redsand, -5.1, 5.3),
-            Temp::new(Material::Greystone, -5.5, -7.1),
-            Temp::new(Material::Gravelstone, -5.7, -5.3),
-            Temp::new(Material::Redsand, -5.9, 7.3),
-            Temp::new(Material::Redsand, -6.3, 2.1),
-            Temp::new(Material::Redsand, -6.5, 5.1),
-            Temp::new(Material::Redstone, -6.9, 3.9),
-            Temp::new(Material::Redstone, -7.1, 6.3),
-            Temp::new(Material::Redstone, -7.5, 2.9),
-            Temp::new(Material::Redstone, -7.7, 4.9),
-            Temp::new(Material::Redstone, -7.9, 7.1),
-        ];
-
-        const NUM_CHOICES_LOW: usize = 24;
-        let voronoi_choices_low: [Temp; NUM_CHOICES_LOW] = [
-            Temp::new(Material::Gravelstone, 5.9, -2.9),
-            Temp::new(Material::GreySand, 5.9, 1.5),
-            Temp::new(Material::GreySand, 5.5, 5.9),
-            Temp::new(Material::Gravelstone, 4.5, -6.9),
-            Temp::new(Material::Gravelstone, 4.1, -0.3),
-            Temp::new(Material::Gravelstone, 3.3, 4.1),
-            Temp::new(Material::Gravelstone, 2.3, -5.1),
-            Temp::new(Material::GreySand, 2.1, 6.7),
-            Temp::new(Material::Stone, 1.5, 1.5),
-            Temp::new(Material::Stone, 1.1, -3.3),
-            Temp::new(Material::Stone, 1.1, 4.9),
-            Temp::new(Material::GreySand, -0.1, 6.7),
-            Temp::new(Material::Stone, -0.3, -6.9),
-            Temp::new(Material::GreySand, -0.3, 3.9),
-            Temp::new(Material::Greystone, -1.7, -0.9),
-            Temp::new(Material::Redstone, -2.1, 5.5),
-            Temp::new(Material::Blackstone, -2.3, -5.1),
-            Temp::new(Material::Greystone, -2.3, 2.5),
-            Temp::new(Material::Greystone, -3.9, -2.9),
-            Temp::new(Material::Redstone, -4.5, 3.7),
-            Temp::new(Material::Redstone, -4.7, 5.9),
-            Temp::new(Material::Blackstone, -5.1, -6.9),
-            Temp::new(Material::Blackstone, -5.7, -4.7),
-            Temp::new(Material::Greystone, -6.3, -0.5),
-        ];
-
-        const NUM_CHOICES_DEEP: usize = 6;
-        let voronoi_choices_deep: [Temp; NUM_CHOICES_DEEP] = [
-            Temp::new(Material::Blackstone, 6.9, -1.3),
-            Temp::new(Material::Water, 6.7, -6.5),
-            Temp::new(Material::Blackstone, 1.7, 6.3),
-            Temp::new(Material::Blackstone, 1.1, -6.9),
-            Temp::new(Material::Blackstone, -4.3, -1.7),
-            Temp::new(Material::Lava, -4.3, 4.1),
-        ];
-
         for z in 0..self.dimension {
             for y in 0..self.dimension {
                 for x in 0..self.dimension {
@@ -315,8 +178,6 @@ impl ChunkParams {
 
                     let rain = trilerp(&self.env.rainfalls, cube_coords);
                     let temp = trilerp(&self.env.temperatures, cube_coords);
-                    let slope = trilerp(&self.env.slopeinesses, cube_coords);
-                    let flat = trilerp(&self.env.flatness, cube_coords);
 
                     // block is a real number, threshold is in (0, 0.2) and biased towards 0
                     // This causes the level of terrain bumpiness to vary over space.
@@ -329,145 +190,11 @@ impl ChunkParams {
                     let elev = terracing_scale * elev_floor
                         + serp(0.0, terracing_scale, elev_rem, threshold);
 
-                    let mut voxel_mat;
                     let max_e = elev;
 
                     let y = na::Vector2::new(rain, temp);
 
-                    let num_choices;
-                    if elev < -40.0 {
-                        let voronoi_choices = &voronoi_choices_deep;
-                        num_choices = &NUM_CHOICES_DEEP;
-
-                        let mut dist = na::norm(&(&voronoi_choices[0].location - &y));
-                        voxel_mat = voronoi_choices[0].material;
-                        for i in 1..*num_choices {
-                            let d = na::norm(&(&voronoi_choices[i].location - &y));
-                            if d <= dist {
-                                dist = d;
-                                voxel_mat = voronoi_choices[i].material;
-                            };
-                        }
-                    } else if elev < -15.0 {
-                        let voronoi_choices = &voronoi_choices_low;
-                        num_choices = &NUM_CHOICES_LOW;
-
-                        let mut dist = na::norm(&(&voronoi_choices[0].location - &y));
-                        voxel_mat = voronoi_choices[0].material;
-                        for i in 1..*num_choices {
-                            let d = na::norm(&(&voronoi_choices[i].location - &y));
-                            if d <= dist {
-                                dist = d;
-                                voxel_mat = voronoi_choices[i].material;
-                            };
-                        }
-                    } else if elev < 5.0 {
-                        let voronoi_choices = &voronoi_choices_med;
-                        num_choices = &NUM_CHOICES_MED;
-
-                        let mut dist = na::norm(&(&voronoi_choices[0].location - &y));
-                        voxel_mat = voronoi_choices[0].material;
-                        for i in 1..*num_choices {
-                            let d = na::norm(&(&voronoi_choices[i].location - &y));
-                            if d <= dist {
-                                dist = d;
-                                voxel_mat = voronoi_choices[i].material;
-                            };
-                        }
-                    } else {
-                        let voronoi_choices = &voronoi_choices_high;
-                        num_choices = &NUM_CHOICES_HIGH;
-
-                        let mut dist = na::norm(&(&voronoi_choices[0].location - &y));
-                        voxel_mat = voronoi_choices[0].material;
-                        for i in 1..*num_choices {
-                            let d = na::norm(&(&voronoi_choices[i].location - &y));
-                            if d <= dist {
-                                dist = d;
-                                voxel_mat = voronoi_choices[i].material;
-                            };
-                        }
-                    }
-
-                    // if temp < -6.0 {
-                    //     if rain < -2.0 {
-                    //         voxel_mat = Material::Greystone;
-                    //     } else if rain < 6.0 {
-                    //         voxel_mat = Material::Snow;
-                    //     } else {
-                    //         voxel_mat = Material::Ice;
-                    //     }
-                    // } else if temp < -2.0 {
-                    //     if rain < -0.5 {
-                    //         voxel_mat = Material::Greystone;
-                    //     } else if rain < 3.0 {
-                    //         voxel_mat = Material::Redstone;
-                    //     } else if rain < 5.0 {
-                    //         voxel_mat = Material::Snow;
-                    //     } else {
-                    //         voxel_mat = Material::Ice;
-                    //     }
-                    // } else if temp < 2.0 {
-                    //     if rain < -2.0 {
-                    //         voxel_mat = Material::Stone;
-                    //     } else if rain < 0.0 {
-                    //         voxel_mat = Material::Gravelstone;
-                    //     } else if rain < 2.0 {
-                    //         voxel_mat = Material::Graveldirt;
-                    //     } else if rain < 3.0 {
-                    //         voxel_mat = Material::Dirt;
-                    //     } else if rain < 4.0 {
-                    //         voxel_mat = Material::Grass;
-                    //     } else {
-                    //         voxel_mat = Material::Flowergrass;
-                    //     }
-                    // } else if temp < 6.0 {
-                    //     if rain < -2.0 {
-                    //         voxel_mat = Material::Blackstone;
-                    //     } else if rain < -0.5 {
-                    //         voxel_mat = Material::GreySand;
-                    //     } else if rain < 2.0 {
-                    //         voxel_mat = Material::Sand;
-                    //     } else if rain < 4.5 {
-                    //         voxel_mat = Material::Redsand;
-                    //     } else {
-                    //         voxel_mat = Material::Mud;
-                    //     }
-                    // } else if temp - rain < 4.0 {
-                    //     voxel_mat = Material::Mud;
-                    // } else if temp - rain < 8.0 {
-                    //     voxel_mat = Material::Sand
-                    // } else if temp - rain < 10.0 {
-                    //     voxel_mat = Material::Blackstone;
-                    // } else {
-                    //     voxel_mat = Material::Lava
-                    // }
-
-                    // Additional adjustments alter both block material and elevation
-                    // for a bit of extra variety.
-                    // if flat <= 30.0 {
-                    //     let slope_mod = (slope + 0.5_f64).rem_euclid(7_f64);
-                    //     // peaks should roughly tend to be snow-covered
-                    //     if slope_mod <= 1_f64 {
-                    //         if temp < 0.0 {
-                    //             voxel_mat = Material::Snow;
-                    //             max_e = elev + 0.25;
-                    //         } else {
-                    //             max_e = elev;
-                    //         }
-                    //     } else if (slope_mod >= 3_f64) && (slope_mod <= 4_f64) {
-                    //         voxel_mat = match voxel_mat {
-                    //             Material::Flowergrass => Material::Bigflowergrass,
-                    //             Material::Greystone => Material::Blackstone,
-                    //             _ => voxel_mat,
-                    //         };
-                    //         max_e = elev - 0.25;
-                    //     } else {
-                    //         max_e = elev;
-                    //     }
-                    // } else {
-                    //     max_e = elev;
-                    // }
+                    let mut voxel_mat = VoronoiInfo::terraingen_voronoi(elev, y);
 
                     let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
                     if voxel_elevation >= max_e / TERRAIN_SMOOTHNESS {

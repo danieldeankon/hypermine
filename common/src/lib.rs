@@ -19,6 +19,7 @@ pub mod node;
 mod plane;
 pub mod proto;
 mod sim_config;
+pub mod terraingen;
 pub mod world;
 pub mod worldgen;
 
