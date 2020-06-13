@@ -192,9 +192,9 @@ impl ChunkParams {
 
                     let max_e = elev;
 
-                    let y = na::Vector2::new(rain, temp);
+                    let y = na::Vector3::new(elev, rain, temp);
 
-                    let mut voxel_mat = VoronoiInfo::terraingen_voronoi(elev, y);
+                    let mut voxel_mat = VoronoiInfo::terraingen_voronoi(y);
 
                     let voxel_elevation = self.surface.distance_to_chunk(self.chunk, &center);
                     if voxel_elevation >= max_e / TERRAIN_SMOOTHNESS {
