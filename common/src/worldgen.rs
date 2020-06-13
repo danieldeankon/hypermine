@@ -77,7 +77,7 @@ impl NodeState {
                 rainfall: 4.0,
                 slopeiness: 3.0,
                 blockiness: 0.0,
-                flatness: 0.0,
+                flatness: 10.0,
             },
         }
     }
@@ -129,6 +129,11 @@ impl NodeState {
     }
 }
 
+fn slopeiness_elevation_boost(slope: f64, flat: f64) -> f64 {
+    let x = (slope.rem_euclid(7.0) - 3.5).abs();
+    -(x.powi(2) + 1.75_f64.powi(2)) * (flat - 40.0) / 40.0
+}
+
 /// Data needed to generate a chunk
 pub struct ChunkParams {
     /// Number of voxels along an edge
@@ -178,7 +183,8 @@ impl ChunkParams {
 
                     let rain = trilerp(&self.env.rainfalls, cube_coords);
                     let temp = trilerp(&self.env.temperatures, cube_coords);
-
+                    let slope = trilerp(&self.env.slopeinesses, cube_coords);
+                    let flat = trilerp(&self.env.flatness, cube_coords);
                     // block is a real number, threshold is in (0, 0.2) and biased towards 0
                     // This causes the level of terrain bumpiness to vary over space.
                     let block = trilerp(&self.env.blockinesses, cube_coords);
@@ -188,7 +194,8 @@ impl ChunkParams {
                     let elev_floor = (elev_raw / terracing_scale).floor();
                     let elev_rem = elev_raw / terracing_scale - elev_floor;
                     let elev = terracing_scale * elev_floor
-                        + serp(0.0, terracing_scale, elev_rem, threshold);
+                        + serp(0.0, terracing_scale, elev_rem, threshold)
+                        + slopeiness_elevation_boost(slope, flat);
 
                     let max_e = elev;
 
@@ -378,7 +385,7 @@ impl ChunkParams {
         // Maximum difference between elevations at the center of a chunk and any other point in the chunk
         // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
         // empirically.
-        const ELEVATION_MARGIN: f64 = 0.7;
+        const ELEVATION_MARGIN: f64 = 2.0;
         let center_elevation = self
             .surface
             .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
@@ -435,17 +442,13 @@ impl EnviroFactors {
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0);
-        let flatness = (parent.flatness + rng.sample(&unif)).max(-20.0).min(20.0);
+        let flatness = (parent.flatness + rng.sample(&unif)).max(0.0).min(40.0);
         let slopeiness = 0.95 * parent.slopeiness + rng.sample(&unif);
-        let elevation = parent.elevation
-            + ((3.0 - parent.slopeiness.rem_euclid(7.0)) * (1.0 - (parent.flatness / 10.0).tanh())
-                + (3.0 - slopeiness.rem_euclid(7.0)) * (1.0 - (flatness / 10.0).tanh()))
-                * rng.sample(&unif);
 
         Self {
             slopeiness,
             flatness,
-            elevation,
+            elevation: parent.elevation + rng.sample(&unif),
             temperature: 0.95 * parent.temperature + rng.sample(&unif),
             rainfall: 0.95 * parent.rainfall + rng.sample(&unif),
             blockiness: 0.95 * parent.blockiness + rng.sample(&unif),
