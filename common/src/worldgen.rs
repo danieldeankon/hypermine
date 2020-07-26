@@ -136,6 +136,7 @@ pub struct ChunkParams {
     dimension: u8,
     /// Which vertex of the containing node this chunk lies against
     chunk: Vertex,
+    /// Random quantities stored at the eight adjacent nodes, used for terrain generation 
     env: ChunkIncidentEnviroFactors,
     /// Reference plane for the terrain surface
     surface: Plane<f64>,
@@ -169,14 +170,63 @@ impl ChunkParams {
         self.chunk
     }
 
+    /// Generate voxels making up the chunk
+    pub fn generate_voxels(&self) -> VoxelData {
+        // Determine whether this chunk might contain a boundary between solid and void
+        let mut me_min = self.env.max_elevations[0];
+        let mut me_max = self.env.max_elevations[0];
+        for &me in &self.env.max_elevations[1..] {
+            me_min = me_min.min(me);
+            me_max = me_max.max(me);
+        }
+        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
+        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
+        // empirically.
+        const ELEVATION_MARGIN: f64 = 0.7;
+        let center_elevation = self
+            .surface
+            .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
+        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
+            && !(self.is_road || self.is_road_support)
+        {
+            // The whole chunk is above ground and not part of the road
+            return VoxelData::Solid(Material::Void);
+        }
+
+        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
+            // The whole chunk is underground
+            // TODO: More accurate VoxelData
+            return VoxelData::Solid(Material::Dirt);
+        }
+
+        let mut voxels = VoxelData::Solid(Material::Void);
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
+
+        self.generate_terrain(&mut voxels, &mut rng);
+
+        if self.is_road {
+            self.generate_road(&mut voxels);
+        } else if self.is_road_support {
+            self.generate_road_support(&mut voxels);
+        }
+
+        // TODO: Don't generate detailed data for solid chunks with no neighboring voids
+
+        if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
+            self.generate_trees(&mut voxels, &mut rng);
+        }
+
+        voxels
+    }
+
     /// Performs all terrain generation that can be done one voxel at a time and with
     /// only the containing chunk's surrounding nodes' envirofactors.
     fn generate_terrain(&self, voxels: &mut VoxelData, rng: &mut Pcg64Mcg) {
         let normal = Normal::new(0.0, 0.03);
 
-        for z in 0..self.dimension {
+        for x in 0..self.dimension {
             for y in 0..self.dimension {
-                for x in 0..self.dimension {
+                for z in 0..self.dimension {
                     let coords = na::Vector3::new(x, y, z);
                     let center = voxel_center(self.dimension, coords);
                     let cube_coords = center * 0.5;
@@ -317,43 +367,6 @@ impl ChunkParams {
         criteria_met >= 2
     }
 
-    fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
-        [
-            self.neighbor(coords, -1, 0, 0, &voxels),
-            self.neighbor(coords, 1, 0, 0, &voxels),
-            self.neighbor(coords, 0, -1, 0, &voxels),
-            self.neighbor(coords, 0, 1, 0, &voxels),
-            self.neighbor(coords, 0, 0, -1, &voxels),
-            self.neighbor(coords, 0, 0, 1, &voxels),
-        ]
-    }
-
-    fn neighbor(
-        &self,
-        w: na::Vector3<u8>,
-        x: i8,
-        y: i8,
-        z: i8,
-        voxels: &VoxelData,
-    ) -> NeighborData {
-        let coords = na::Vector3::new(
-            (w.x as i8 + x) as u8,
-            (w.y as i8 + y) as u8,
-            (w.z as i8 + z) as u8,
-        );
-        let coords_opposing = na::Vector3::new(
-            (w.x as i8 - x) as u8,
-            (w.y as i8 - y) as u8,
-            (w.z as i8 - z) as u8,
-        );
-        let material = voxels.get(index(self.dimension, coords));
-
-        NeighborData {
-            coords_opposing,
-            material,
-        }
-    }
-
     /// Plants trees on dirt and grass. Trees consist of a block of wood
     /// and a block of leaves. The leaf block is on the opposite face of the
     /// wood block as the ground block.
@@ -393,53 +406,42 @@ impl ChunkParams {
         }
     }
 
-    /// Generate voxels making up the chunk
-    pub fn generate_voxels(&self) -> VoxelData {
-        // Determine whether this chunk might contain a boundary between solid and void
-        let mut me_min = self.env.max_elevations[0];
-        let mut me_max = self.env.max_elevations[0];
-        for &me in &self.env.max_elevations[1..] {
-            me_min = me_min.min(me);
-            me_max = me_max.max(me);
+    /// Provides information on the type of material in a voxel's six neighbours
+    fn voxel_neighbors(&self, coords: na::Vector3<u8>, voxels: &VoxelData) -> [NeighborData; 6] {
+        [
+            self.neighbor(coords, -1, 0, 0, &voxels),
+            self.neighbor(coords, 1, 0, 0, &voxels),
+            self.neighbor(coords, 0, -1, 0, &voxels),
+            self.neighbor(coords, 0, 1, 0, &voxels),
+            self.neighbor(coords, 0, 0, -1, &voxels),
+            self.neighbor(coords, 0, 0, 1, &voxels),
+        ]
+    }
+
+    fn neighbor(
+        &self,
+        w: na::Vector3<u8>,
+        x: i8,
+        y: i8,
+        z: i8,
+        voxels: &VoxelData,
+    ) -> NeighborData {
+        let coords = na::Vector3::new(
+            (w.x as i8 + x) as u8,
+            (w.y as i8 + y) as u8,
+            (w.z as i8 + z) as u8,
+        );
+        let coords_opposing = na::Vector3::new(
+            (w.x as i8 - x) as u8,
+            (w.y as i8 - y) as u8,
+            (w.z as i8 - z) as u8,
+        );
+        let material = voxels.get(index(self.dimension, coords));
+
+        NeighborData {
+            coords_opposing,
+            material,
         }
-        // Maximum difference between elevations at the center of a chunk and any other point in the chunk
-        // TODO: Compute what this actually is, current value is a guess! Real one must be > 0.6
-        // empirically.
-        const ELEVATION_MARGIN: f64 = 0.7;
-        let center_elevation = self
-            .surface
-            .distance_to_chunk(self.chunk, &na::Vector3::repeat(0.5));
-        if (center_elevation - ELEVATION_MARGIN > me_max / TERRAIN_SMOOTHNESS)
-            && !(self.is_road || self.is_road_support)
-        {
-            // The whole chunk is above ground and not part of the road
-            return VoxelData::Solid(Material::Void);
-        }
-
-        if (center_elevation + ELEVATION_MARGIN < me_min / TERRAIN_SMOOTHNESS) && !self.is_road {
-            // The whole chunk is underground
-            // TODO: More accurate VoxelData
-            return VoxelData::Solid(Material::Dirt);
-        }
-
-        let mut voxels = VoxelData::Solid(Material::Void);
-        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(hash(self.node_spice, self.chunk as u64));
-
-        self.generate_terrain(&mut voxels, &mut rng);
-
-        if self.is_road {
-            self.generate_road(&mut voxels);
-        } else if self.is_road_support {
-            self.generate_road_support(&mut voxels);
-        }
-
-        // TODO: Don't generate detailed data for solid chunks with no neighboring voids
-
-        if self.dimension > 4 && matches!(voxels, VoxelData::Dense(_)) {
-            self.generate_trees(&mut voxels, &mut rng);
-        }
-
-        voxels
     }
 }
 
@@ -529,6 +531,7 @@ fn chunk_incident_enviro_factors(
     })
 }
 
+/// Linearly interpolate at interior and boundary of a cube given values at the eight corners.
 fn trilerp<N: na::RealField>(
     &[v000, v001, v010, v011, v100, v101, v110, v111]: &[N; 8],
     t: na::Vector3<N>,
