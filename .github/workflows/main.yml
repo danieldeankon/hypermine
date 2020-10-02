@@ -39,10 +39,17 @@ jobs:
         with:
           command: test
           args: --workspace
+        
+      - name: Test ls
+        run: | 
+          pwd
+          ls
+          
+        
       - uses: actions/upload-artifact@v2
         with:
           name: hypermine
-          path: D:\a\hypermine\hypermine\target\release\client*
+          path: D:/a/hypermine/hypermine/target/release/client.exe
 
   lint:
     runs-on: ubuntu-latest
