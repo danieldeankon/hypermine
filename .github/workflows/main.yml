@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        toolchain-type: [stable, beta, nightly]
+        toolchain-type: [stable]
 
     runs-on: ${{matrix.os}}
 
