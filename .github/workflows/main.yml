@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: hypermine
-          path: path/target/release/client*
+          path: ./target/release/client*
 
   lint:
     runs-on: ubuntu-latest
