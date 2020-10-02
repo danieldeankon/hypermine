@@ -26,6 +26,17 @@ jobs:
         run: choco install ninja
 
       - uses: actions/checkout@v1
+      
+      - name: Test ls
+        run: | 
+          pwd
+          ls
+      
+      - uses: actions/upload-artifact@v2
+        with:
+          name: hypermine-pre
+          path: D:/a/hypermine/hypermine/assets/materials/00001_dirt.png
+      
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -39,11 +50,7 @@ jobs:
         with:
           command: test
           args: --workspace
-        
-      - name: Test ls
-        run: | 
-          pwd
-          ls
+
           
         
       - uses: actions/upload-artifact@v2
