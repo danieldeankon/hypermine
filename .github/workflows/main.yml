@@ -15,6 +15,21 @@ jobs:
     runs-on: ${{matrix.os}}
 
     steps:
+
+
+      - uses: actions/checkout@v1
+      
+      - name: Test ls
+        run: | 
+          pwd
+          ls D:/a/hypermine/hypermine/
+          ls D:/a/hypermine/hypermine/target/
+      
+      - uses: actions/upload-artifact@v2
+        with:
+          name: hypermine-pre
+          path: D:/a/hypermine/hypermine/assets/materials/00001_dirt.png
+      
       - name: Install shaderc
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -24,18 +39,6 @@ jobs:
       - name: Install Ninja
         if: matrix.os == 'windows-latest'
         run: choco install ninja
-
-      - uses: actions/checkout@v1
-      
-      - name: Test ls
-        run: | 
-          pwd
-          ls
-      
-      - uses: actions/upload-artifact@v2
-        with:
-          name: hypermine-pre
-          path: D:/a/hypermine/hypermine/assets/materials/00001_dirt.png
       
       - uses: actions-rs/toolchain@v1
         with:
@@ -51,12 +54,14 @@ jobs:
           command: test
           args: --workspace
 
-          
+      - if: matrix.os == 'windows-latest'
+        run: ls D:/a/hypermine/hypermine/target/release/
+      - if: matrix.os == 'windows-latest'
         
-      - uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v2
         with:
           name: hypermine
-          path: D:/a/hypermine/hypermine/target/release/client.exe
+          path: D:/a/hypermine/hypermine/target/release/client
 
   lint:
     runs-on: ubuntu-latest
