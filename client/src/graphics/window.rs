@@ -124,6 +124,9 @@ impl Window {
         let mut place_blocks = false;
         let mut last_frame = Instant::now();
         let mut mouse_captured = false;
+
+        let mut last_node_id = self.sim.position_node;
+
         self.event_loop
             .take()
             .unwrap()
@@ -162,6 +165,24 @@ impl Window {
                     if !had_params {
                         if let Some(params) = self.sim.params() {
                             self.draw.as_mut().unwrap().configure(params);
+                        }
+                    }
+
+                    let current_node_id = self.sim.position_node;
+                    if current_node_id != last_node_id {
+                        if let Some(current_node) = self.sim.graph.get(current_node_id) {
+                            let state = &current_node.state;
+                            
+                            let pos = self.sim.position_local  * na::Vector4::w();
+                            let ground_plane = state.surface();
+                            let height = ground_plane.distance_to(&pos);
+
+                            let len = self.sim.graph.length(current_node_id);
+                            
+                            tracing::info!("Node {:?},\t{},\theight={:.03},\tlength={}", 
+                                current_node_id, state.debug_string(), height, len);
+                            
+                            last_node_id = current_node_id;
                         }
                     }
 

@@ -83,6 +83,10 @@ impl NodeState {
         }
     }
 
+    pub fn debug_string(&self) -> String {
+        format!("{}", self.enviro.debug_string())
+    }
+
     pub fn child(&self, graph: &DualGraph, node: NodeId, side: Side) -> Self {
         let spice = graph
             .descenders(node)
@@ -483,6 +487,12 @@ struct EnviroFactors {
     blockiness: f64,
 }
 impl EnviroFactors {
+
+    fn debug_string(&self) -> String {
+        format!("max_elevation={:.03},\ttemperature={:.03},\trainfall={:.03},\tblockiness={:.03}", 
+            self.max_elevation, self.temperature, self.rainfall, self.blockiness)
+    }
+
     fn varied_from(parent: Self, spice: u64) -> Self {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(spice);
         let unif = Uniform::new_inclusive(-1.0, 1.0);
