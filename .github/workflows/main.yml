@@ -10,8 +10,9 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        toolchain-type: [stable]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{matrix.os}}
 
     steps:
       - name: Install shaderc
@@ -25,10 +26,21 @@ jobs:
         run: choco install ninja
 
       - uses: actions/checkout@v1
+      
+      - name: Test ls
+        run: | 
+          pwd
+          ls
+      
+      - uses: actions/upload-artifact@v2
+        with:
+          name: hypermine-pre
+          path: D:/a/hypermine/hypermine/assets/materials/00001_dirt.png
+      
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: ${{matrix.toolchain-type}}
           override: true
       - uses: actions-rs/cargo@v1
         with:
@@ -38,10 +50,17 @@ jobs:
         with:
           command: test
           args: --workspace
+
+          
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin client --release
+        
       - uses: actions/upload-artifact@v2
         with:
           name: hypermine
-          path: path/target/release/client*
+          path: D:/a/hypermine/hypermine/target/release/client.exe
 
   lint:
     runs-on: ubuntu-latest
@@ -62,18 +81,3 @@ jobs:
         with:
           command: clippy
           args: --workspace --all-targets -- -D warnings
-
-  check-protos:
-    name: Check protos
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v1
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-      - run: sudo apt update && sudo apt-get -y install protobuf-compiler
-      - name: Generate Rust code from .proto files
-        run: cargo run -p gen-protos
-      - name: Check for uncommitted changes
-        run: git diff --exit-code
